@@ -30,14 +30,14 @@ cd ../bin
 ```
 python eval.py --input testcase/sample.in --output output/test.out --plot true
 
-python eval.py --input testcase/test1.in --output output/test.out --plot true
+python eval.py --input testcase/test1.in --output output/test.out --fig results --plot true
 
-python eval.py --input testcase/test2.in --output output/test.out --plot true
+python eval.py --input testcase/test2.in --output output/test.out --fig results --plot true
 
-python eval.py --input testcase/test3.in --output output/test.out --plot true
+python eval.py --input testcase/test3.in --output output/test.out --fig results --plot true
 
-python eval.py --input testcase/test4.in --output output/test.out --plot true
+python eval.py --input testcase/test4.in --output output/test.out --fig results --plot true
 
-python eval.py --input testcase/test5.in --output output/test.out --plot true
+python eval.py --input testcase/test5.in --output output/test.out --fig results --plot true
 
 ```
