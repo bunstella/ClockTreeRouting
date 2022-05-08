@@ -16,6 +16,10 @@ struct Point
     int operator-(Point b) const{
         return (abs(_x - b._x) + abs(_y - b._y));
     }
+    bool operator==(Point a) const{
+        if(a._x == _x && a._y == _y) return true;
+        else return false;
+    }
 };
 
 class Pin {

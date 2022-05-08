@@ -17,6 +17,8 @@ struct DirectEnum
     int y_off[4] = {1, -1, 0, 0}; 
 };
 
+const DirectEnum Direction;
+
 class pin_dist {
 public:
     int dist;
@@ -66,6 +68,7 @@ public:
 public:
     Edge(int x_1, int y_1, int x_2, int y_2) 
         {from = db::Point(x_1,y_1); to = db::Point(x_2,y_2);}
+    Edge(db::Point p1, db::Point p2) : from(p1), to(p2) {}
     Edge(utils::PointT<int> p1, utils::PointT<int> p2) 
         {from = db::Point(p1.x,p1.y); to = db::Point(p2.x,p2.y);}
 
@@ -75,6 +78,49 @@ public:
         return os;
     }
 };
+
+class TwoPinNet {
+public:
+    int _id = -1;
+    int p_id = -1;
+public:
+    vector<db::Point> Pins;
+
+    TwoPinNet(db::Point p0, db::Point p1){Pins.push_back(p0);Pins.push_back(p1);}
+    TwoPinNet(int i, int p, db::Point p0, db::Point p1) : _id(i),p_id(p) {Pins.push_back(p0);Pins.push_back(p1);}
+    TwoPinNet(int p, db::Point p0, db::Point p1) : p_id(p) {Pins.push_back(p0);Pins.push_back(p1);}
+    TwoPinNet(int lhs_x,int lhs_y,int rhs_x,int rhs_y){Pins.emplace_back(lhs_x,lhs_y);Pins.emplace_back(rhs_x,rhs_y);}
+    TwoPinNet(const int id) : _id(id) { }
+    ~TwoPinNet() {Pins.clear();}
+    
+    int HPWL() {return (Pins[0] - Pins[1]);}
+
+    friend ostream& operator<<(ostream& os, const TwoPinNet& c) {
+        return os << c._id << "\n";
+    }
+};
+
+class NetPrior {
+public:
+    int cost;
+    int _id;
+
+    NetPrior(int c, int i) : 
+                cost(c), _id(i){}
+};
+
+class Vertex {
+public:
+    int cost;
+    db::Point pos;
+    std::shared_ptr<Vertex> prev;
+
+    int direction;
+
+    Vertex(int c, db::Point v, const std::shared_ptr<Vertex> &p, int d) : 
+                cost(c), pos(v), prev(p), direction(d) {}
+};
+
 
 // struct Point {
 //     Point() {}

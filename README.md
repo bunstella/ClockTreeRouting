@@ -28,7 +28,7 @@ cd ../bin
 
 ## Verify
 ```
-python eval.py --input testcase/sample.in --output output/sample.out --plot true
+python eval.py --input testcase/sample.in --output output/sample.out --fig results --plot true
 
 python eval.py --input testcase/test1.in --output output/test1.out --fig results --plot true
 

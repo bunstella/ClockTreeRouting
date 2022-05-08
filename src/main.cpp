@@ -58,9 +58,13 @@ int main(int argc, char* argv[]) {
     utils::timer runtime;
 
     gr::Router router(&database);
-    router.cluster();
+    router.Cluster();
     router.PatternRoute();
+    router.ReRoute();
+
     router.write(output_path);
+
+    // router.print_demand();
 
     // // Pattern Route
     // router.patter_route();

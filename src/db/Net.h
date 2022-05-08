@@ -14,7 +14,6 @@ public:
     ~Net();
 
     void set_id(const int i) { _id = i; }
-
     const int id() const { return _id; }
 
     void addPin(Pin* pin);

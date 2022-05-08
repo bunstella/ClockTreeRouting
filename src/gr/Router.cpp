@@ -60,12 +60,8 @@ Router::Router(db::Database* database_) :
     /* Net */
     Net_xs.resize(ntaps);
     Net_ys.resize(ntaps);
-    rpoints.resize(ntaps);
     rEdges.resize(ntaps);
-
-    // for(auto tap : database->pin_taps) {
-    //     cout << tap->pos;
-    // }
+    net_2pnet_map.resize(ntaps);
 
     // // Route paths | net-wise
     // rpaths.resize(database->nNets);
@@ -77,45 +73,8 @@ Router::Router(db::Database* database_) :
 
 //---------------------------------------------------------------------
 
-bool Router::cluster(){
-    // pin_per_tap.resize(ntaps);
-    // int K = database->nTaps;
-    // for(db::Pin* pin : database->pins) {
-    //     int min_dist = INT_MAX;
-    //     int min_tap = -1;
-    //     for (db::Pin* tap : database->pin_taps) {
-    //         int dist = tap->pos - pin->pos;
-    //         if(dist < min_dist) {
-    //             min_dist = dist;
-    //             min_tap = tap->id();
-    //         }
-    //     }
-    //     pin_per_tap[min_tap].push_back(pin->id());
-    // }
-
-    // for(vector<int> tap : pin_per_tap) {
-    //     for(int id : tap) {
-    //         cout << id << " ";
-    //     }
-    //     cout << endl;
-    // }
-    // log() << "MAXLOAD " << MaxLoad << endl;
-    // for(vector<int> tap : pin_per_tap) {
-    //     log() << tap.size() << endl;
-    // }
- 
-    // /*
-    // Prepare for queues
-    // */
-    // auto distComp = [](const std::shared_ptr<pin_dist> &lhs, const std::shared_ptr<pin_dist> &rhs) {
-    //     return rhs->dist > lhs->dist;
-    // };
-    // priority_queue<std::shared_ptr<pin_dist>, vector<std::shared_ptr<pin_dist>>, 
-    //                     decltype(distComp)> distQueue(distComp);
-
-    /*
-    Priority Queue
-    */
+bool Router::Cluster(){
+    /* Priority Queue */
     int MaxDist = 0;
     for (db::Pin* pin : database->pins) {
         for (db::Tap* tap : database->taps) {
@@ -128,6 +87,66 @@ bool Router::cluster(){
         }
     }
 
+    /* Cluster */
+    for(int dist = 0; dist <= MaxDist; dist += 2) {
+        for (db::Tap* tap : database->taps) {
+            int id = tap->id();
+            while(!pinsDistQueue[id].empty() && 
+                    (pinsDistQueue[id].top()->dist <= dist)) {
+                auto pin = pinsDistQueue[id].top();
+                pinsDistQueue[tap->id()].pop();
+                /* 
+                    A pin is assigned or
+                    The tap is full
+                */
+                if ((pin_id_tap[pin->idx] != -1) || 
+                    (load_per_tap[id] >= MaxLoad)) {
+                    continue;
+                }
+                else {
+                    /* 
+                        A pin is unassigned and
+                        The tap is unfilled
+                    */
+                    load_per_tap[id]++;
+                    pin_id_tap[pin->idx] = id;
+                    tap_id_pin[id].push_back(pin->idx);
+                    pin_assignment[pin->idx] = make_shared<pin_assign_tap>(pin->idx, id, dist);
+                }
+            }
+        }
+    }
+
+    /* Init route net */
+    for (int i = 0; i < tap_id_pin.size(); i++) {
+        nets.emplace_back(i);
+        nets[i].pinPoints.emplace_back(database->taps[i]->pos);
+        vector<int> tap_pins = tap_id_pin[i];
+        for (int pin_id : tap_pins) {
+            // cout << pin_id << ' ';
+            nets[i].pinPoints.emplace_back(database->pins[pin_id]->pos);
+        }
+        // cout << endl;
+    }
+
+    return true;
+} //END MODULE
+
+//---------------------------------------------------------------------
+
+bool Router::BKMeans(){
+    /* Priority Queue */
+    int MaxDist = 0;
+    for (db::Pin* pin : database->pins) {
+        for (db::Tap* tap : database->taps) {
+            int dist = tap->pos - pin->pos;
+            if (dist > MaxDist) MaxDist = dist;
+            tapsDistQueue[pin->id()].push(
+                std::make_shared<pin_dist>(dist, tap->id()));
+            pinsDistQueue[tap->id()].push(
+                std::make_shared<pin_dist>(dist, pin->id()));
+        }
+    }
     // /*
     // Priority Queue to Vector
     // */
@@ -171,9 +190,7 @@ bool Router::cluster(){
     //     cout << endl;
     // }
 
-    /*
-    Cluster
-    */
+    /* Cluster */
     for(int dist = 0; dist <= MaxDist; dist += 2) {
         for (db::Tap* tap : database->taps) {
             int id = tap->id();
@@ -200,7 +217,6 @@ bool Router::cluster(){
                     pin_assignment[pin->idx] = make_shared<pin_assign_tap>(pin->idx, id, dist);
                 }
             }
-            // cout << endl;
         }
     }
 
@@ -210,17 +226,10 @@ bool Router::cluster(){
         nets[i].pinPoints.emplace_back(database->taps[i]->pos);
         vector<int> tap_pins = tap_id_pin[i];
         for (int pin_id : tap_pins) {
-            cout << pin_id << ' ';
+            // cout << pin_id << ' ';
             nets[i].pinPoints.emplace_back(database->pins[pin_id]->pos);
         }
-        cout << endl;
-    }
-
-    for (auto net : nets) {
-        for (auto point : net.pinPoints) {
-            cout << point << ' ';
-        }
-        cout << endl;
+        // cout << endl;
     }
 
     return true;
@@ -229,21 +238,26 @@ bool Router::cluster(){
 //---------------------------------------------------------------------
 
 bool Router::PatternRoute() {
+    log() << "Pattern Route\n";
     readLUT();  // read flute LUT
-    // int xs[100 * degree];
-    // int ys[100 * degree];
-    // Tree flutetree = flute(degree, xs, ys, ACCURACY);
 
     /* Loop over Nets(Taps) */
     for (auto net : nets) {
         constructSteinerTree(net);
     }
+    r2pEdges.resize(two_pin_nets.size());
+    for (auto net : two_pin_nets) {
+        PatternRouteTwoPin(net);
+    }
     return true;
 } //END MODULE
+
+//---------------------------------------------------------------------
 
 bool Router::constructSteinerTree(GRNet net) {
     // 2. Construct Steiner tree
     const int degree = net.pinPoints.size();
+    if (degree == 1) return true;
     log() << degree << endl;
     int xs[degree * 100];
     int ys[degree * 100];
@@ -267,35 +281,352 @@ bool Router::constructSteinerTree(GRNet net) {
         adjacentList[branchIndex].push_back(branch.n);
         adjacentList[branch.n].push_back(branchIndex);
     }
-    /* Construct edges */
+    /* Construct nets */
     for (int branchIndex = 0; branchIndex < numBranches; branchIndex++) {
-        // cout << steinerPoints[branchIndex] << ": ";
         for (int n : adjacentList[branchIndex]) {
-            // cout << steinerPoints[n] << " ";
             if (n > branchIndex) {
                 int lhs_x = steinerPoints[branchIndex].x;
                 int lhs_y = steinerPoints[branchIndex].y;
                 int rhs_x = steinerPoints[n].x;
                 int rhs_y = steinerPoints[n].y;
-                if (!((lhs_x - rhs_x) * (lhs_y - rhs_y)))
-                    rEdges[net.id()].emplace_back(steinerPoints[branchIndex], steinerPoints[n]);
-                else {
-                    if ((rand() / double(RAND_MAX)) > 0.5) {
-                        utils::PointT<int> tmpPoint(lhs_x, rhs_y);
-                        rEdges[net.id()].emplace_back(steinerPoints[branchIndex], tmpPoint);
-                        rEdges[net.id()].emplace_back(tmpPoint, steinerPoints[n]);
-                    } else {
-                        utils::PointT<int> tmpPoint(rhs_x, lhs_y);
-                        rEdges[net.id()].emplace_back(steinerPoints[branchIndex], tmpPoint);
-                        rEdges[net.id()].emplace_back(tmpPoint, steinerPoints[n]);
-                    }
-                }
+                two_pin_nets.emplace_back(make_shared<TwoPinNet>(two_pin_nets.size(), 
+                            net.id(), db::Point(lhs_x,lhs_y), db::Point(rhs_x,rhs_y)));
+                net_2pnet_map[net.id()].push_back(two_pin_nets.size()-1);
             }
         }
         // cout << endl;
     }
 
     return true;
+} //END MODULE
+
+// ---------------------------------------------------------------------
+
+bool Router::PatternRouteTwoPin(shared_ptr<TwoPinNet> net){
+    // log() << "Routing two pin net\n";
+    int x_1 = net->Pins[0]._x;int y_1 = net->Pins[0]._y;
+    int x_2 = net->Pins[1]._x;int y_2 = net->Pins[1]._y;
+
+    int x_l = min(x_1, x_2);int y_l = min(y_1, y_2);
+    int x_h = max(x_1, x_2);int y_h = max(y_1, y_2);
+
+    if (((x_1 - x_2) * (y_1 - y_2))) {
+        // log() << "L shape: " << net->Pins[0] << " | " << net->Pins[1] << endl;
+        int x_s_1; int x_s_2;
+        int y_s_1; int y_s_2;
+        if (((x_2 - x_1) * (y_2 - y_1)) < 0){
+            x_s_1 = x_h; x_s_2 = x_l;
+            y_s_1 = y_h; y_s_2 = y_l;
+        } else{
+            x_s_1 = x_l; x_s_2 = x_h;
+            y_s_1 = y_l; y_s_2 = y_h;
+        }
+
+        int min_cost = INT_MAX;
+        int cost;
+        bool direction;     // true vertival | false horizontal
+        int bend;           // Bending point
+
+        // Vertical line
+        for (int i = x_l; i <= x_h; i++){
+            cost = 0;
+            cost += accumulate(demH[y_s_1].begin() + x_l, demH[y_s_1].begin() + i, 0);
+            cost += accumulate(demH[y_s_2].begin() + i, demH[y_s_2].begin() + x_h, 0);
+            cost += accumulate(demV[i].begin() + y_l, demV[i].begin() + y_h, 0);
+            if (cost < min_cost){
+                min_cost = cost;
+                direction = true;
+                bend = i;
+            }
+        }
+        // Horizontal line
+        for (int j = y_l; j <= y_h; j++){
+            cost = 0;
+            cost += accumulate(demV[x_s_1].begin() + y_l, demV[x_s_1].begin() + j, 0);
+            cost += accumulate(demV[x_s_2].begin() + j, demV[x_s_2].begin() + y_h, 0);
+            cost += accumulate(demH[j].begin() + x_l, demH[j].begin() + x_h, 0);
+            if (cost < min_cost){
+                min_cost = cost;
+                direction = false;
+                bend = j;
+            }
+        }
+        // Update demand matrix | Update route path
+        int idx = net->_id;
+        if (direction == true) {
+            r2pEdges[idx].emplace_back(x_l,y_s_1,bend,y_s_1);
+            r2pEdges[idx].emplace_back(bend,y_s_1,bend,y_s_2);
+            r2pEdges[idx].emplace_back(bend,y_s_2,x_h,y_s_2);
+        } else {
+            r2pEdges[idx].emplace_back(x_s_1,y_l,x_s_1,bend);
+            r2pEdges[idx].emplace_back(x_s_1,bend,x_s_2,bend);
+            r2pEdges[idx].emplace_back(x_s_2,bend,x_s_2,y_h);
+        }
+    } else {
+        // Update dem and matrix | Update route path
+        // log() << "Line shape: " << net->Pins[0] << " | " << net->Pins[1] << endl;
+        int idx = net->_id;
+        r2pEdges[idx].emplace_back(x_1,y_1,x_2,y_2);
+    }
+
+    addPath(net);
+
+    return true;
+} //END MODULE
+
+// ---------------------------------------------------------------------
+
+bool Router::ReRoute(){
+    log() << "Reroute\n";
+    // Calculating overflow; Collect nets
+    set<int> nets_to_unroute;
+    for (int i = 0; i < gridX; i++) {
+        for (int j = 0; j < gridY; j++) {
+            if (demV[i][j] > capV){            // X = H | Y = V
+                int ovfl = demV[i][j] - capV;
+                for (int idx : gcells[i][j]->netsY) {
+                    nets_to_unroute.insert(idx);
+                }
+            }
+        }
+    }
+    for (int i = 0; i < gridX; i++) {
+        for (int j = 0; j < gridY; j++) {
+            if (demH[j][i] > capH){           // X = H | Y = V
+                int ovfl = demH[j][i] - capH;
+                for (int idx : gcells[i][j]->netsX) {
+                    nets_to_unroute.insert(idx);
+                }
+            }
+        }
+    }
+    for (int idx : nets_to_unroute) {
+        netHPWLQueue.push(std::make_shared<pin_dist>(two_pin_nets[idx]->HPWL(), idx));
+        unRouteNet(two_pin_nets[idx]);
+        log() << two_pin_nets[idx]->Pins[0] << " | " << two_pin_nets[idx]->Pins[1] << 
+                    " | " << two_pin_nets[idx]->HPWL() << endl;
+    }
+    while (!netHPWLQueue.empty()) {
+        auto net = netHPWLQueue.top();
+        netHPWLQueue.pop();
+        cout << net->dist << endl;
+        MazeRouteTwoPin(two_pin_nets[net->idx]);
+        addPath(two_pin_nets[net->idx]);
+    }
+
+    return true;
+} //END MODULE
+
+// ---------------------------------------------------------------------
+
+bool Router::unRouteNet(shared_ptr<TwoPinNet> net){
+    log() << "Unrouting two pin net\n";
+    deletePath(net);
+    return true;
+} //END MODULE
+
+//---------------------------------------------------------------------
+// TODO: thres blk
+
+bool Router::MazeRouteTwoPin(shared_ptr<TwoPinNet> net){
+    // logger->info() << net->name() << ' ' << net_queue.size() << " nets left\n";
+    // Create maps
+    vector<vector<int>> visited(gridX, vector<int>(gridY, false));
+    vector<vector<int>> blkH(gridX, vector<int>(gridY, false));
+    vector<vector<int>> blkV(gridX, vector<int>(gridY, false));
+    for(int i = 0; i < gridX; i++){
+        for(int j = 0; j < gridY; j++){
+            blkH[i][j] = (demH[j][i] >= capH);
+            blkV[i][j] = (demV[i][j] >= capV);
+        }
+    }
+    int x_1 = net->Pins[0]._x;int y_1 = net->Pins[0]._y;
+    int x_2 = net->Pins[1]._x;int y_2 = net->Pins[1]._y;
+
+    // Prepare for queues
+    auto solComp = [](const std::shared_ptr<Vertex> &lhs, const std::shared_ptr<Vertex> &rhs) {
+        return rhs->cost < lhs->cost;
+    };
+    priority_queue<std::shared_ptr<Vertex>, vector<std::shared_ptr<Vertex>>, 
+                        decltype(solComp)> solQueue(solComp);
+
+    // Init vertex
+    solQueue.push(std::make_shared<Vertex>(0, db::Point(x_1, y_1), nullptr, -1));
+    db::Point dstPin(x_2, y_2);
+    db::Point srcPin(x_1, y_1);
+    std::shared_ptr<Vertex> dstVer = std::make_shared<Vertex>(0, db::Point(x_2, y_2), nullptr, -1);
+
+    // Hadlock's 
+    while (!solQueue.empty()) {
+        auto curVer = solQueue.top();
+        solQueue.pop();
+        int x_v = curVer->pos._x;
+        int y_v = curVer->pos._y;
+        int cost = curVer->cost;
+        visited[x_v][y_v] = true;
+
+        // reach a pin?
+        if (curVer->pos == dstPin) {
+            dstVer = curVer;
+            break;
+        }
+
+        // 4 directions
+        for(int d = 0; d < 4; d++){
+            // Next vertex to visit | remember to calc the bound
+            int x_off = Direction.x_off[d];
+            int y_off = Direction.y_off[d];
+            int x_new = x_v + x_off;
+            int y_new = y_v + y_off;
+            if (x_new < 0 || y_new < 0 || x_new >= gridX || y_new >= gridY) continue;
+
+            // This direction has block
+            if (d == 0 && blkV[x_v][y_v]) continue;
+            if (d == 1 && blkV[x_v][y_v - 1]) continue;
+            if (d == 2 && blkH[x_v - 1][y_v]) continue;
+            if (d == 3 && blkH[x_v][y_v]) continue;
+
+            // If not visited
+            if (!visited[x_new][y_new]) {
+                db::Point newPin(x_new, y_new);
+                int new_cost = cost;
+
+                if ((newPin - dstPin) > (curVer->pos - dstPin)) new_cost++;
+                solQueue.push(std::make_shared<Vertex>(new_cost, newPin, curVer, d));
+                visited[x_new][y_new] = true;
+            }
+        }
+    }
+
+    int idx = net->_id;
+    if (dstVer->prev == nullptr) return false;
+
+    /* Add edges from solution */
+    shared_ptr<Vertex> curVer = dstVer;
+    int cur_dir;
+    int next_dir = curVer->direction;
+    db::Point last_bend = curVer->pos;
+    while (curVer->prev != nullptr){
+        shared_ptr<Vertex> preVer = curVer->prev;
+
+        cur_dir = curVer->direction;
+        if (cur_dir == 0) demV[preVer->pos._x][preVer->pos._y] += 1;
+        if (cur_dir == 1) demV[curVer->pos._x][curVer->pos._y] += 1;
+        if (cur_dir == 2) demH[curVer->pos._y][curVer->pos._x] += 1;
+        if (cur_dir == 3) demH[preVer->pos._y][preVer->pos._x] += 1;
+
+        if (cur_dir != next_dir) {
+            r2pEdges[idx].emplace_back(last_bend,curVer->pos);
+            last_bend = curVer->pos;
+        }
+        next_dir = cur_dir;
+        curVer = preVer;
+    }
+    r2pEdges[idx].emplace_back(last_bend,srcPin);
+
+    return true;
+} //END MODULE
+
+//---------------------------------------------------------------------
+
+bool Router::addPath(shared_ptr<TwoPinNet> net) {
+    int idx = net->_id;
+    auto edges = r2pEdges[idx];
+    for (auto edge : edges) {
+        db::Point from = edge.from;
+        db::Point to = edge.to;
+        if ((from._x - to._x) == 0) {
+            // Vertical edge
+            int x = from._x;
+            int y_l = min(from._y,to._y);int y_h = max(from._y,to._y);
+            for (int j = y_l; j != y_h; j++){
+                demV[x][j] += 1;
+                db::GCell* gcell = gcells[x][j];
+                gcell->demandV += 1;
+                gcell->netsY.push_back(idx);        // X = H | Y = V
+            }
+        } else {
+            // Hotizontal edge
+            int y = from._y;
+            int x_l = min(from._x,to._x);int x_h = max(from._x,to._x);
+            for (int i = x_l; i != x_h; i++){
+                demH[y][i] += 1;
+                db::GCell* gcell = gcells[i][y];
+                gcell->demandH += 1;
+                gcell->netsX.push_back(idx);        // X = H | Y = V
+            }
+        }
+    }
+    return true;
+} //END MODULE
+
+//---------------------------------------------------------------------
+
+bool Router::deletePath(shared_ptr<TwoPinNet> net) {
+    int idx = net->_id;
+    auto edges = r2pEdges[idx];
+    for (auto edge : edges) {
+        db::Point from = edge.from;
+        db::Point to = edge.to;
+        if ((from._x - to._x) == 0) {
+            // Vertical edge
+            int x = from._x;
+            int y_l = min(from._y,to._y);int y_h = max(from._y,to._y);
+            for (int j = y_l; j != y_h; j++){
+                demV[x][j] -= 1;
+                db::GCell* gcell = gcells[x][j];
+                gcell->demandV -= 1;
+                vector<int>::iterator pos = find(gcell->netsY.begin(), gcell->netsY.end(), idx);
+                if (pos != gcell->netsY.end()) // == myVector.end() means the element was not found
+                    gcell->netsY.erase(pos);
+                else{
+                    logger->info() << "Error! Path not found!\n";
+                    exit(1);
+                }
+            }
+        } else {
+            // Hotizontal edge
+            int y = from._y;
+            int x_l = min(from._x,to._x);int x_h = max(from._x,to._x);
+            for (int i = x_l; i != x_h; i++){
+                demH[y][i] -= 1;
+                db::GCell* gcell = gcells[i][y];
+                gcell->demandH -= 1;
+                vector<int>::iterator pos = find(gcell->netsX.begin(), gcell->netsX.end(), idx);
+                if (pos != gcell->netsX.end()) // == myVector.end() means the element was not found
+                    gcell->netsX.erase(pos);
+                else{
+                    logger->info() << "Error! Path not found!\n";
+                    exit(1);
+                }
+            }
+        }
+    }
+    r2pEdges[idx].clear();
+    return true;
+} //END MODULE
+
+//---------------------------------------------------------------------
+
+void Router::print_demand(){
+    for(int j = 0; j < gridY; j++){
+        for(int i = 0; i < gridX; i++){
+            logger->info() << setw(3) << demV[i][j];
+        }
+        logger->info() << endl;
+    }
+    logger->info() << endl;
+    logger->info() << endl;
+    for(int j = 0; j < gridY; j++){
+        for(int i = 0; i < gridX; i++){
+            logger->info() << setw(3) << demH[j][i];
+        }
+        logger->info() << endl;
+    }
+    logger->info() << endl;
+    logger->info() << endl;
+    logger->info() << endl;
+    logger->info() << endl;
 } //END MODULE
 
 //---------------------------------------------------------------------
@@ -307,18 +638,27 @@ void Router::write(const string& output_path) {
         outfile << "TAP " << database->taps[idx]->id() << "\n";
         outfile << "PINS " << tap_id_pin[idx].size() << "\n";
         for (int p : tap_id_pin[idx]) outfile << "PIN " << p << "\n";
-
-        outfile << "ROUTING " << rEdges[idx].size() << "\n";
-        for (Edge edge : rEdges[idx]){
-            outfile << "EDGE " << edge << "\n";
+        int num_route = 0;
+        for (auto edges_idx : net_2pnet_map[idx]) {
+            num_route += r2pEdges[edges_idx].size();
         }
+        outfile << "ROUTING " << num_route << "\n";
+        for (auto edges_idx : net_2pnet_map[idx]) {
+            for (Edge edge : r2pEdges[edges_idx]){
+                outfile << "EDGE " << edge << "\n";
+            }
+        }
+        // outfile << "ROUTING " << rEdges[idx].size() << "\n";
+        // for (Edge edge : rEdges[idx]){
+        //     outfile << "EDGE " << edge << "\n";
+        // }
     }
     outfile.close();
 } //END MODULE
 
 //---------------------------------------------------------------------
 
-// bool Router::single_net_pattern(db::Net* net){
+// bool Router::SingleNetPatternRoute(db::Net* net){
 //     int x_1 = net->Pins[0]->pos_x;int y_1 = net->Pins[0]->pos_y;
 //     int x_2 = net->Pins[1]->pos_x;int y_2 = net->Pins[1]->pos_y;
 
