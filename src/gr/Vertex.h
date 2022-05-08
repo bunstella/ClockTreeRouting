@@ -29,6 +29,16 @@ public:
                 dist(d), idx(i){}
 };
 
+class Move_pair {
+public:
+    double dist;
+    int from;
+    int to;
+
+    Move_pair(double d, int i, int j) : 
+                dist(d), from(i), to(j){}
+};
+
 class pin_assign_tap {
 public:
     int _id;

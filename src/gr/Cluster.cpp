@@ -588,50 +588,48 @@ bool Router::KMeansRefine(){
         }
         // cout << '\n';
     }
+    
     /* Refine */
+    auto swapComp = [](const shared_ptr<Move_pair> &lhs, const shared_ptr<Move_pair> &rhs) {
+        return rhs->dist < lhs->dist;
+    };
     for (int i = 0; i < K; i++) {
-        int idx = 0;
-        while (pinsClusterVector[i].size() > MaxLoad) {
-            /* for a far pin */
-            int keeper = -1;
-            int min_dist = INT_MAX;
-            for (int j = 0; j < K; j++) {
-                if (j != i) {
-                    if (pinsClusterVector[j].size() < MaxLoad) {
-                        double dist_c = pinsClusterVector[i][idx] - centroids[j];
-                        if (dist_c < min_dist) { keeper = j;min_dist = dist_c;}     
-                    }
-                }
-            }
-            pinsClusterVector[keeper].push_back(points[pinsClusterVector[i][idx]._c]);
-            pinsClusterVector[i].erase(pinsClusterVector[i].begin() + idx);
-            if (pinsClusterVector[i].size() == idx) {
-                int idx = 0;
-                while (pinsClusterVector[i].size() > MaxLoad) {
-                    for (int j = 0; j < K; j++) {
-                        if (j != i) {
-                            if (pinsClusterVector[j].size() < MaxLoad) {
-                                double dist_c = pinsClusterVector[i][idx] - centroids[j];
-                                double dist_longest = pinsClusterVector[j][0] - centroids[j];
-                                if (abs(dist_c - dist_longest) < 10) {
-                                    pinsClusterVector[j].push_back(points[pinsClusterVector[i][idx]._c]);
-                                    pinsClusterVector[i].erase(pinsClusterVector[i].begin() + idx);
-                                }
-                            }
+        cout << i << " : " << pinsClusterVector[i].size() << " : " << MaxLoad << endl;
+        if (pinsClusterVector[i].size() > MaxLoad) {
+            priority_queue<std::shared_ptr<Move_pair>, vector<std::shared_ptr<Move_pair>>, 
+                                decltype(swapComp)> swapQueue(swapComp);
+            /* for each pin */
+            for (int m = 0; m < pinsClusterVector[i].size(); m++) {
+                for (int j = 0; j < K; j++) {
+                    if (j != i && pinsClusterVector[j].size() < MaxLoad) {
+                        for (auto pin : pinsClusterVector[j]) {
+                            double dist_margin = pinsClusterVector[i][m] - pin;
+                            swapQueue.push(make_shared<Move_pair>(dist_margin, m, j));
                         }
                     }
                 }
             }
+            for (int n = 0; n < pinsClusterVector[i].size() - MaxLoad; n++) {
+                auto pair = swapQueue.top();
+                swapQueue.pop();
+                // cout << pair->dist << endl;
+                if (pinsClusterVector[pair->to].size() == MaxLoad) {n--;continue;}
+                if (pinsClusterVector[i][pair->from]._c == -1) {n--;continue;}
+                pinsClusterVector[pair->to].push_back(points[pinsClusterVector[i][pair->from]._c]);
+                pinsClusterVector[i][pair->from]._c = -1;
+            }
         }
     }
-    // exit(1);
+    
     /* Init route net */
     for (int i = 0; i < tap_id_pin.size(); i++) {
         nets.emplace_back(i);
         nets[i].pinPoints.emplace_back(database->taps[i]->pos);
         for (auto pin : pinsClusterVector[i]) {
-            tap_id_pin[i].push_back(pin._c);
-            nets[i].pinPoints.emplace_back(database->pins[pin._c]->pos);
+            if (pin._c != -1) {
+                tap_id_pin[i].push_back(pin._c);
+                nets[i].pinPoints.emplace_back(database->pins[pin._c]->pos);
+            }
         }
     }
 
