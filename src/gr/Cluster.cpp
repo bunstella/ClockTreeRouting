@@ -7,6 +7,7 @@ typedef lemon::MaxWeightedMatching<UGraph,DistMap> MWM;
 
 namespace gr {
 
+#define MAXREFINE 10    // max. degree that can be handled
 //---------------------------------------------------------------------
 
 bool Router::Cluster(){
@@ -458,9 +459,15 @@ bool Router::KMeans(){
     return true;
 } //END MODULE
 
+bool Router::KMeansRefine(){
+    if (!KMeansHardRefine()) KMeansSafeRefine();
+    
+    return true;
+}
+
 // ---------------------------------------------------------------------
 
-bool Router::KMeansRefine(){
+bool Router::KMeansSafeRefine(){
     log () << "Start Refined K-Means Clustering..." << std::endl;
     /* Initialization */
     int N = npins;
@@ -619,6 +626,224 @@ bool Router::KMeansRefine(){
                 pinsClusterVector[i][pair->from]._c = -1;
             }
         }
+    }
+    
+    /* Init route net */
+    for (int i = 0; i < tap_id_pin.size(); i++) {
+        nets.emplace_back(i);
+        nets[i].pinPoints.emplace_back(database->taps[i]->pos);
+        for (auto pin : pinsClusterVector[i]) {
+            if (pin._c != -1) {
+                tap_id_pin[i].push_back(pin._c);
+                nets[i].pinPoints.emplace_back(database->pins[pin._c]->pos);
+            }
+        }
+    }
+
+    return true;
+} //END MODULE
+
+// ---------------------------------------------------------------------
+
+bool Router::KMeansHardRefine(){
+    log () << "Start Refined K-Means Clustering..." << std::endl;
+    /* Initialization */
+    int N = npins;
+    int K = ntaps;
+    int S = MaxLoad;
+    vector<int> loads;
+    loads.resize(K,0);
+    vector<vector<CPoint<double>>> clusters;
+    clusters.resize(K);
+    vector<CPoint<double>> centroids;
+    vector<CPoint<double>> taps;
+    for (int i = 0; i < K; i++) {
+        db::Tap* tap = database->taps[i];
+        centroids.emplace_back(tap->pos._x,tap->pos._y);
+        centroids.back()._c = i;
+        taps.emplace_back(tap->pos._x,tap->pos._y);
+        taps.back()._c = i;
+    }
+    vector<CPoint<double>> points;
+    for (int i = 0; i < N; i++) {
+        db::Pin* pin = database->pins[i];
+        points.emplace_back(pin->pos._x,pin->pos._y);
+        points.back()._c = i;
+    }
+    
+    /* Clustering */
+    const double max_dist = double(gridX + gridY + 10);
+    double cost = 0;
+    double pre_cost = INT_MAX;
+    for (int iter = 0; iter < 50; iter++) {
+        log() << "Iteration " << iter << std:: endl;
+        /* Assignment */
+        for (CPoint<double> p : points) {
+            double min_dist = double(INT_MAX);
+            double max_score = 0;
+            int cluster = -1;
+            for (CPoint<double> c : centroids) {
+                double dist = p - c;
+                if (dist < min_dist) {min_dist = dist; cluster = c._c;}
+            }
+            cost += min_dist;
+            clusters[cluster].push_back(p);
+            loads[cluster]++;
+        }
+
+        /* Cost */
+        log() << "Last cost: " << pre_cost << " | " << "cost " << cost << '\n';
+        
+        /* Update centroids */
+        centroids.clear();
+        for (int i = 0; i < clusters.size(); i++) {
+            CPoint<double> center(0,0);
+            for (auto p : clusters[i])
+                center += p;
+            center /= double(clusters[i].size());
+            centroids.push_back(center);
+            centroids.back()._c = i;
+        }
+
+        if (((pre_cost - cost) < 30) || (iter == 30)) break;
+        /* reset */
+        pre_cost = cost;
+        cost = 0;
+        for (int& l : loads) l = 0;
+        for (int i = 0; i < clusters.size(); i++) clusters[i].clear();
+    }
+
+    /* Cluster */
+    UGraph g;
+    DistMap distmap(g);
+    vector<UGraph::Node> tap_node;
+    for (int i = 0; i < K; i++) {
+        UGraph::Node u = g.addNode();
+        tap_node.push_back(u);
+    }
+    vector<UGraph::Node> centroid_node;
+    for (int i = 0; i < K; i++) {
+        UGraph::Node v = g.addNode();
+        centroid_node.push_back(v);
+    }
+    /* Assign weight to edges; weight is Max_Distance - Distance */
+    for (int i = 0; i < K; i++) {
+        auto u = tap_node[i];
+        for (int j = 0; j < K; j++) {
+            auto v = centroid_node[j];
+            UGraph::Edge e = g.addEdge(u,v);
+            auto t = taps[i];
+            auto c = centroids[j];
+            double dist = max_dist - (t - c);
+            distmap.set(e,dist);
+        }
+    }
+    /* Run Matching */
+    MWM Matching(g,distmap);
+    Matching.run();
+
+    /* Matching to cluster */
+    vector<int> tap_id_cluster;
+    tap_id_cluster.resize(K);
+    for (auto u : tap_node) {
+        if (Matching.mate(u) == lemon::INVALID) std::cout << "Error\n";
+        else tap_id_cluster[g.id(Matching.mate(u)) - K] = g.id(u);
+    }
+
+    /* Per Tap */
+    vector<priority_queue<shared_ptr<pin_dist>, vector<shared_ptr<pin_dist>>, 
+                        NegdistComp>> pinsClusterQueue;
+    vector<vector<CPoint<double>>> pinsClusterVector;
+    pinsClusterQueue.resize(K);
+    pinsClusterVector.resize(K);
+    for (int i = 0; i < K; i++) {
+        for (auto pin : clusters[tap_id_cluster[i]]) {
+            pinsClusterQueue[i].push(
+                std::make_shared<pin_dist>(pin - centroids[tap_id_cluster[i]], pin._c));
+        }
+    }
+    /* Priority Queue to Vector */
+    for (int i = 0; i < K; i++) {
+        auto cluster = pinsClusterQueue[i];
+        while (!cluster.empty()) {
+            auto pin = cluster.top();
+            cluster.pop();
+            pinsClusterVector[i].push_back(points[pin->idx]);
+            // cout << pin->dist << ' ';
+        }
+        // cout << '\n';
+    }
+    
+    /* Refine */
+    auto swapComp = [](const shared_ptr<Move_pair> &lhs, const shared_ptr<Move_pair> &rhs) {
+        return rhs->dist < lhs->dist;
+    };
+    for (int i = 0; i < K; i++) loads[i] = pinsClusterVector[i].size();
+    int TotalOverflow = 0;
+    for (int l : loads) {TotalOverflow+=
+        (l > MaxLoad ? l - MaxLoad : 0);}
+    log() << "TotalOverflow: " << TotalOverflow << '\n';
+    int counter = 0;
+    while(TotalOverflow!=0) {
+        counter++;if(counter > MAXREFINE) {log() << "Error! Use safe version\n";return false;}
+        for (int i = 0; i < K; i++) {
+            if (pinsClusterVector[i].size() > MaxLoad) {
+                priority_queue<std::shared_ptr<Move_pair>, vector<std::shared_ptr<Move_pair>>, 
+                                    decltype(swapComp)> swapQueue(swapComp);
+                /* for each pin */
+                for (int m = 0; m < pinsClusterVector[i].size(); m++) {
+                    if (pinsClusterVector[i][m]._c != -1) {
+                        for (int j = 0; j < K; j++) {
+                            if (j != i && pinsClusterVector[j].size() < MaxLoad) {
+                                for (auto pin : pinsClusterVector[j]) {
+                                    if (pin._c != -1) {
+                                        double dist_margin = pinsClusterVector[i][m] - pin;
+                                        swapQueue.push(make_shared<Move_pair>(dist_margin, m, j));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                int min_dist = INT_MAX;
+                if (swapQueue.top()->dist > 20) {
+                    while(!swapQueue.empty()) swapQueue.pop();
+                    /* for each pin */
+                    for (int m = 0; m < pinsClusterVector[i].size(); m++) {
+                        if (pinsClusterVector[i][m]._c != -1) {
+                            for (int j = 0; j < K; j++) {
+                                if (j != i) {
+                                    for (auto pin : pinsClusterVector[j]) {
+                                        if (pin._c != -1) {
+                                            double dist_margin = pinsClusterVector[i][m] - pin;
+                                            if(dist_margin < min_dist) min_dist=dist_margin;
+                                            swapQueue.push(make_shared<Move_pair>(dist_margin, m, j));
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                for (int n = 0; n < loads[i]- MaxLoad; n++) {
+                    auto pair = swapQueue.top();
+                    swapQueue.pop();
+                    if (pinsClusterVector[pair->to].size() == MaxLoad) {n--;continue;}
+                    if (pinsClusterVector[i][pair->from]._c == -1) {n--;continue;}
+                    pinsClusterVector[pair->to].push_back(points[pinsClusterVector[i][pair->from]._c]);
+                    pinsClusterVector[i][pair->from]._c = -1;
+                }
+            }
+        }
+        TotalOverflow = 0;
+        for (int i = 0; i < K; i++){
+            loads[i] = 0;
+            for (auto pin : pinsClusterVector[i]) {
+                if (pin._c!=-1) loads[i]++;
+            }
+            TotalOverflow+=(loads[i] > MaxLoad ? loads[i] - MaxLoad : 0);
+        }
+        log() << "TotalOverflow: " << TotalOverflow << '\n';
     }
     
     /* Init route net */

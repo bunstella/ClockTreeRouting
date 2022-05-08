@@ -118,6 +118,8 @@ public:
     bool BKMeans();
     bool CKMeans();
     bool KMeansRefine();
+    bool KMeansHardRefine();
+    bool KMeansSafeRefine();
     void write(const string& output_path);
     void print_demand();
 

@@ -64,7 +64,6 @@ int main(int argc, char* argv[]) {
     router.KMeansRefine();
     router.PatternRoute();
     router.ReRoute();
-
     router.write(output_path);
     // router.print_demand();
 
