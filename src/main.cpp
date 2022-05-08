@@ -1,7 +1,6 @@
 
 #include <sys/stat.h>
 #include "global.h"
-#include "db/Database.h"
 #include "gr/Router.h"
 
 void signalHandler(int signum) {
@@ -58,17 +57,19 @@ int main(int argc, char* argv[]) {
     utils::timer runtime;
 
     gr::Router router(&database);
-    router.Cluster();
+    // router.Cluster();
+    // router.KMeans();
+    // router.BKMeans();
+    // router.CKMeans();
+    router.KMeansRefine();
     router.PatternRoute();
     router.ReRoute();
 
     router.write(output_path);
-
     // router.print_demand();
 
     // // Pattern Route
     // router.patter_route();
-
     // // Maze Route
     // router.break_ovfl();
     // double run_time = runtime.elapsed();

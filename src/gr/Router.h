@@ -1,9 +1,13 @@
 #pragma once
 #include "global.h"
-#include "flute/flute.h"
 #include "db/Database.h"
 
-#include "Rpath.h"
+#include <lemon/list_graph.h>
+#include <lemon/matching.h>
+#include <math.h>       /* log2 */
+#include <random>
+
+#include "flute/flute.h"
 #include "Vertex.h"
 
 extern "C" {
@@ -20,6 +24,12 @@ namespace gr {
 struct distComp{
 	bool operator()(const shared_ptr<pin_dist> &lhs, const shared_ptr<pin_dist> &rhs){
 		return lhs->dist > rhs->dist;
+	}
+};
+
+struct NegdistComp{
+	bool operator()(const shared_ptr<pin_dist> &lhs, const shared_ptr<pin_dist> &rhs){
+		return lhs->dist < rhs->dist;
 	}
 };
 
@@ -47,7 +57,7 @@ public:
     db::GRGrid grGrid;
     vector<vector<db::GCell*>> gcells;
 
-    /* Pin assign to Tap */
+    /* Pin assign to Tap | Clusters*/
     vector<int> load_per_tap;
     vector<int> pin_id_tap;
     vector<vector<int>> tap_id_pin;
@@ -104,7 +114,10 @@ public:
 
     /* Function */
     bool Cluster();
+    bool KMeans();
     bool BKMeans();
+    bool CKMeans();
+    bool KMeansRefine();
     void write(const string& output_path);
     void print_demand();
 

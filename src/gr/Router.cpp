@@ -1,6 +1,11 @@
 #include "Router.h"
 
-using namespace gr;
+typedef lemon::ListGraph UGraph;
+typedef UGraph::EdgeMap<double> DistMap;
+typedef lemon::MaxWeightedPerfectMatching<UGraph,DistMap> MWPM;
+typedef lemon::MaxWeightedMatching<UGraph,DistMap> MWM;
+
+namespace gr {
 
 Router::Router(db::Database* database_) :   
     database(database_)
@@ -27,9 +32,7 @@ Router::Router(db::Database* database_) :
     // for (db::Net* net: database->nets)
     //     net_queue.push_back(net);
 
-    /*
-    Gcells | Shape of a map
-    */
+    /* Gcells | Shape of a map */
     gcells.resize(gridX, vector<db::GCell*>(gridY));
     for(int i = 0; i < gridX; i++){
         for(int j = 0; j < gridY; j++){
@@ -73,170 +76,6 @@ Router::Router(db::Database* database_) :
 
 //---------------------------------------------------------------------
 
-bool Router::Cluster(){
-    /* Priority Queue */
-    int MaxDist = 0;
-    for (db::Pin* pin : database->pins) {
-        for (db::Tap* tap : database->taps) {
-            int dist = tap->pos - pin->pos;
-            if (dist > MaxDist) MaxDist = dist;
-            tapsDistQueue[pin->id()].push(
-                std::make_shared<pin_dist>(dist, tap->id()));
-            pinsDistQueue[tap->id()].push(
-                std::make_shared<pin_dist>(dist, pin->id()));
-        }
-    }
-
-    /* Cluster */
-    for(int dist = 0; dist <= MaxDist; dist += 2) {
-        for (db::Tap* tap : database->taps) {
-            int id = tap->id();
-            while(!pinsDistQueue[id].empty() && 
-                    (pinsDistQueue[id].top()->dist <= dist)) {
-                auto pin = pinsDistQueue[id].top();
-                pinsDistQueue[tap->id()].pop();
-                /* 
-                    A pin is assigned or
-                    The tap is full
-                */
-                if ((pin_id_tap[pin->idx] != -1) || 
-                    (load_per_tap[id] >= MaxLoad)) {
-                    continue;
-                }
-                else {
-                    /* 
-                        A pin is unassigned and
-                        The tap is unfilled
-                    */
-                    load_per_tap[id]++;
-                    pin_id_tap[pin->idx] = id;
-                    tap_id_pin[id].push_back(pin->idx);
-                    pin_assignment[pin->idx] = make_shared<pin_assign_tap>(pin->idx, id, dist);
-                }
-            }
-        }
-    }
-
-    /* Init route net */
-    for (int i = 0; i < tap_id_pin.size(); i++) {
-        nets.emplace_back(i);
-        nets[i].pinPoints.emplace_back(database->taps[i]->pos);
-        vector<int> tap_pins = tap_id_pin[i];
-        for (int pin_id : tap_pins) {
-            // cout << pin_id << ' ';
-            nets[i].pinPoints.emplace_back(database->pins[pin_id]->pos);
-        }
-        // cout << endl;
-    }
-
-    return true;
-} //END MODULE
-
-//---------------------------------------------------------------------
-
-bool Router::BKMeans(){
-    /* Priority Queue */
-    int MaxDist = 0;
-    for (db::Pin* pin : database->pins) {
-        for (db::Tap* tap : database->taps) {
-            int dist = tap->pos - pin->pos;
-            if (dist > MaxDist) MaxDist = dist;
-            tapsDistQueue[pin->id()].push(
-                std::make_shared<pin_dist>(dist, tap->id()));
-            pinsDistQueue[tap->id()].push(
-                std::make_shared<pin_dist>(dist, pin->id()));
-        }
-    }
-    // /*
-    // Priority Queue to Vector
-    // */
-    // for (db::Pin* pin : database->pins) {
-    //     // cout << pin->pos << ": ";
-    //      while (!tapsDistQueue[pin->id()].empty()) {
-    //         auto tap = tapsDistQueue[pin->id()].top();
-    //         tapsDistQueue[pin->id()].pop();
-    //         tapsDist[pin->id()].push_back(tap);
-    //         // cout << tap->dist << ' ';
-    //      }
-    //     //  cout << endl;
-    // }
-    // for (db::Tap* tap : database->taps) {
-    //      while (!pinsDistQueue[tap->id()].empty()) {
-    //         auto pin = pinsDistQueue[tap->id()].top();
-    //         pinsDistQueue[tap->id()].pop();
-    //         pinsDist[tap->id()].push_back(pin);
-    //         // cout << pin->dist << ' ';
-    //      }
-    //     //  cout << endl;
-    // }
-
-    // /*
-    // Print Priority Queue to Vector
-    // */
-    // for (db::Pin* pin : database->pins) {
-    //     cout << pin->pos << ": ";
-    //     for(shared_ptr<pin_dist> tap : tapsDist[pin->id()]) {
-    //         // cout << database->taps[tap->idx]->pos << ' ';
-    //         cout << tap->dist << ' ';
-    //     }
-    //     cout << endl;
-    // }
-    // for (db::Tap* tap : database->taps) {
-    //     cout << tap->pos << ": ";
-    //     for(shared_ptr<pin_dist> pin : pinsDist[tap->id()]) {
-    //         // cout << database->taps[tap->idx]->pos << ' ';
-    //         cout << pin->dist << ' ';
-    //     }
-    //     cout << endl;
-    // }
-
-    /* Cluster */
-    for(int dist = 0; dist <= MaxDist; dist += 2) {
-        for (db::Tap* tap : database->taps) {
-            int id = tap->id();
-            while(!pinsDistQueue[id].empty() && 
-                    (pinsDistQueue[id].top()->dist <= dist)) {
-                auto pin = pinsDistQueue[id].top();
-                pinsDistQueue[tap->id()].pop();
-                /* 
-                    A pin is assigned or
-                    The tap is full
-                */
-                if ((pin_id_tap[pin->idx] != -1) || 
-                    (load_per_tap[id] >= MaxLoad)) {
-                    continue;
-                }
-                else {
-                    /* 
-                        A pin is unassigned and
-                        The tap is unfilled
-                    */
-                    load_per_tap[id]++;
-                    pin_id_tap[pin->idx] = id;
-                    tap_id_pin[id].push_back(pin->idx);
-                    pin_assignment[pin->idx] = make_shared<pin_assign_tap>(pin->idx, id, dist);
-                }
-            }
-        }
-    }
-
-    /* Init route net */
-    for (int i = 0; i < tap_id_pin.size(); i++) {
-        nets.emplace_back(i);
-        nets[i].pinPoints.emplace_back(database->taps[i]->pos);
-        vector<int> tap_pins = tap_id_pin[i];
-        for (int pin_id : tap_pins) {
-            // cout << pin_id << ' ';
-            nets[i].pinPoints.emplace_back(database->pins[pin_id]->pos);
-        }
-        // cout << endl;
-    }
-
-    return true;
-} //END MODULE
-
-//---------------------------------------------------------------------
-
 bool Router::PatternRoute() {
     log() << "Pattern Route\n";
     readLUT();  // read flute LUT
@@ -258,7 +97,7 @@ bool Router::constructSteinerTree(GRNet net) {
     // 2. Construct Steiner tree
     const int degree = net.pinPoints.size();
     if (degree == 1) return true;
-    log() << degree << endl;
+    // log() << degree << endl;
     int xs[degree * 100];
     int ys[degree * 100];
     int i = 0;
@@ -409,7 +248,6 @@ bool Router::ReRoute(){
     while (!netHPWLQueue.empty()) {
         auto net = netHPWLQueue.top();
         netHPWLQueue.pop();
-        cout << net->dist << endl;
         MazeRouteTwoPin(two_pin_nets[net->idx]);
         addPath(two_pin_nets[net->idx]);
     }
@@ -420,7 +258,7 @@ bool Router::ReRoute(){
 // ---------------------------------------------------------------------
 
 bool Router::unRouteNet(shared_ptr<TwoPinNet> net){
-    log() << "Unrouting two pin net\n";
+    // log() << "Unrouting two pin net\n";
     deletePath(net);
     return true;
 } //END MODULE
@@ -1054,3 +892,4 @@ void Router::write(const string& output_path) {
 
 // //---------------------------------------------------------------------
 
+}

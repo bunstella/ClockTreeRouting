@@ -1,5 +1,6 @@
+#pragma once
+
 #include "global.h"
-#include "db/Database.h"
 
 namespace gr {
 
@@ -21,10 +22,10 @@ const DirectEnum Direction;
 
 class pin_dist {
 public:
-    int dist;
+    double dist;
     int idx;
 
-    pin_dist(int d, int i) : 
+    pin_dist(double d, int i) : 
                 dist(d), idx(i){}
 };
 
@@ -121,37 +122,32 @@ public:
                 cost(c), pos(v), prev(p), direction(d) {}
 };
 
+template <typename T>
+struct CPoint
+{   
+    CPoint() {}
+    CPoint(T x, T y)
+        : _x(x), _y(y) {}
+    T _x = 0;
+    T _y = 0;
+    int _c = -1;
 
-// struct Point {
-//     Point() {}
-//     Point(int x, int y)
-//         : x_(x), y_(y) {}
-//     int x_ = 0;
-//     int y_ = 0;
-
-//     bool operator==(Point a) const{
-//         if(a.x_ == x_ && a.y_ == y_) return true;
-//         else return false;
-//     }
-
-//     int operator-(Point b) const{
-//         return (abs(x_ - b.x_) + abs(y_ - b.y_));
-//     }
-// };
-
-// const DirectEnum Direction;
-
-// class Vertex {
-// public:
-//     int cost;
-//     Point pos;
-//     std::shared_ptr<Vertex> prev;
-
-//     int direction;
-
-//     Vertex(int c, Point v, const std::shared_ptr<Vertex> &p, int d) : 
-//                 cost(c), pos(v), prev(p), direction(d) {}
-// };
-
+    friend std::ostream& operator<<(std::ostream& os, const CPoint& c) {
+        return os << "(" << c._x << ", " << c._y << ")";
+    }
+    T operator-(CPoint b) const{
+        return (abs(_x - b._x) + abs(_y - b._y));
+    }
+    CPoint& operator+=(const CPoint& rhs) {
+        _x += rhs._x;
+        _y += rhs._y;
+        return *this;
+    }
+    CPoint& operator/=(const double d) {
+        _x /= d;
+        _y /= d;
+        return *this;
+    }
+};
 
 }

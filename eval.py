@@ -74,6 +74,28 @@ if args.plot_only:
                             (int(data[3]), int(data[4]))
                         ])
                 line = f.readline()
+    length = 0
+    for t in range(num_taps):
+        used = [[[0 for y in range(size)] for x in range(size)] for d in range(2)]
+        for edge in tap_edges[t]:
+            if edge[0][0] == edge[1][0]:
+                x = edge[0][0]
+                l = min(edge[0][1], edge[1][1])
+                h = max(edge[0][1], edge[1][1])
+                for y in range(l, h):
+                    if used[1][x][y] == 0:
+                        used[1][x][y] = 1
+                        length += 1
+            elif edge[0][1] == edge[1][1]:
+                y = edge[0][1]
+                l = min(edge[0][0], edge[1][0])
+                h = max(edge[0][0], edge[1][0])
+                for x in range(l, h):
+                    if used[0][x][y] == 0:
+                        used[0][x][y] = 1
+                        length += 1
+    print('Total length = {}.'.format(length))
+    
     # plot_name = args.input.replace('.in', '.png')
     design = args.input[args.input.rfind('/')+1:].replace('.in', '.png')
     plot_name = os.path.join(args.fig, design)

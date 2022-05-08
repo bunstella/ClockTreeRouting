@@ -3,9 +3,9 @@
 /*  User-Defined Parameters  */
 /*****************************/
 #define MAXD 150    // max. degree that can be handled
-#define ACCURACY 7  // Default accuracy
+#define ACCURACY 30  // Default accuracy
 #define ROUTING 1   // 1 to construct routing, 0 to estimate WL only
-#define LOCAL_REFINEMENT 0      // Suggestion: Set to 1 if ACCURACY >= 5
+#define LOCAL_REFINEMENT 1      // Suggestion: Set to 1 if ACCURACY >= 5
 #define REMOVE_DUPLICATE_PIN 0  // Remove dup. pin for flute_wl() & flute()
 
 #ifndef DTYPE   // Data type for distance
