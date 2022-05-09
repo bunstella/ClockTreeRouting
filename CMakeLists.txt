@@ -18,6 +18,8 @@ project(cts)
 
 set(CMAKE_CXX_STANDARD 14)
 
+set (ENABLE_STATIC_COMPILE ON)
+
 ######################
 #      SET PATH      #
 ######################
@@ -70,8 +72,11 @@ add_executable(${PROJECT_NAME} ${SRC_FILES})
 #######################
 # Include Directories #
 #######################
-
 include_directories(${PATH_SRC})
+set(INCLUDED_DIRECTORIES 
+    ${Boost_INCLUDE_DIR}
+    "/research/d4/gds/bqfu21/usr/local/include/"
+)
 
 #################
 # Link Libraries  #
@@ -79,10 +84,6 @@ include_directories(${PATH_SRC})
 set(USED_LIBRARIES 
     ${Boost_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
-)
-
-set(INCLUDED_DIRECTORIES 
-    ${Boost_INCLUDE_DIR}
 )
 
 #################
@@ -94,6 +95,7 @@ if (ENABLE_STATIC_COMPILE)
     set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS 
             "-static -Wl,--whole-archive -rdynamic -lpthread -Wl,--no-whole-archive")
 else (ENABLE_STATIC_COMPILE)
+message(STATUS "dynamic compilation...")
     set_target_properties(${PROJECT_NAME} PROPERTIES LINK_FLAGS 
             "-Wl,--whole-archive -rdynamic -lpthread -Wl,--no-whole-archive")
 endif (ENABLE_STATIC_COMPILE)

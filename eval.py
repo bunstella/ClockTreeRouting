@@ -6,8 +6,8 @@ parser = argparse.ArgumentParser(description='CENG 4120 Clock Tree Synthesis Eva
 parser.add_argument('--input', required=True)
 parser.add_argument('--output', default='')
 parser.add_argument('--plot_only', default=False)
-parser.add_argument('--fig', default='')
-parser.add_argument('--plot', default='false')
+parser.add_argument('--fig', default='results')
+parser.add_argument('--plot', default=False)
 args = parser.parse_args()
 
 max_time = 0

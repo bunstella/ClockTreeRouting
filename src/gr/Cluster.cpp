@@ -7,10 +7,12 @@ typedef lemon::MaxWeightedMatching<UGraph,DistMap> MWM;
 
 namespace gr {
 
-#define MAXREFINE 10    // max. degree that can be handled
+#define MAXREFINE 10    // max. iteration of refinement
+#define BKPIN 2000      // max. number of pins of BK
 //---------------------------------------------------------------------
 
 bool Router::Cluster(){
+    log () << "Start Greedy Search Clustering..." << std::endl;
     /* Priority Queue */
     int MaxDist = 0;
     for (db::Pin* pin : database->pins) {
@@ -65,13 +67,20 @@ bool Router::Cluster(){
         }
         // cout << endl;
     }
-
+    /* Check Load */
+    for (auto pins : tap_id_pin) {
+        if (pins.size() > MaxLoad) return false;
+    }
     return true;
 } //END MODULE
 
 //---------------------------------------------------------------------
 
 bool Router::BKMeans(){
+    if (npins > 2000) {
+        CKMeans();
+        return false;
+    }
     log () << "Start Balanced K-Means Clustering..." << std::endl;
     /* Initialization */
     int N = npins;
@@ -99,7 +108,7 @@ bool Router::BKMeans(){
     double cost = 0;
     double pre_cost = INT_MAX;
     for (int iter = 0; iter < 20; iter++) {
-        log() << "Iteration " << iter << std:: endl;
+        // log() << "Iteration " << iter << std:: endl;
         /* Maximum Distance */
         double max_dist = 0;
         for (db::Pin* pin : database->pins) {
@@ -159,7 +168,7 @@ bool Router::BKMeans(){
             centroids.back()._c = i;
         }
 
-        if ((pre_cost - cost) < 30) break;
+        if ((pre_cost - cost) < 50) break;
         /* reset */
         pre_cost = cost;
         cost = 0;
@@ -200,7 +209,7 @@ bool Router::BKMeans(){
     vector<int> tap_id_cluster;
     tap_id_cluster.resize(K);
     for (auto u : tap_node) {
-        if (Matching.mate(u) == lemon::INVALID) std::cout << "Error\n";
+        if (Matching.mate(u) == lemon::INVALID) log() << "Error\nContact administrator";
         else tap_id_cluster[g.id(Matching.mate(u)) - K] = g.id(u);
     }
 
@@ -220,7 +229,7 @@ bool Router::BKMeans(){
 // ---------------------------------------------------------------------
 
 bool Router::CKMeans(){
-    log () << "Start Balanced K-Means Clustering..." << std::endl;
+    log () << "Start Constraint K-Means Clustering..." << std::endl;
     /* Initialization */
     int N = npins;
     int K = ntaps;
@@ -250,7 +259,7 @@ bool Router::CKMeans(){
     double cost = 0;
     double pre_cost = INT_MAX;
     for (int iter = 0; iter < 20; iter++) {
-        log() << "Iteration " << iter << std:: endl;
+        // log() << "Iteration " << iter << std:: endl;
         /* Assignment */
         for (CPoint<double> p : points) {
             double min_dist = double(INT_MAX);
@@ -267,7 +276,7 @@ bool Router::CKMeans(){
         }
 
         /* Cost */
-        log() << "Last cost: " << pre_cost << " | " << "cost " << cost << '\n';
+        // log() << "Last cost: " << pre_cost << " | " << "cost " << cost << '\n';
         
         /* Update centroids */
         centroids.clear();
@@ -334,7 +343,10 @@ bool Router::CKMeans(){
             nets[i].pinPoints.emplace_back(database->pins[pin._c]->pos);
         }
     }
-
+    /* Check Load */
+    for (auto pins : tap_id_pin) {
+        if (pins.size() > MaxLoad) return false;
+    }
     return true;
 } //END MODULE
 
@@ -371,7 +383,7 @@ bool Router::KMeans(){
     double cost = 0;
     double pre_cost = INT_MAX;
     for (int iter = 0; iter < 50; iter++) {
-        log() << "Iteration " << iter << std:: endl;
+        // log() << "Iteration " << iter << std:: endl;
         /* Assignment */
         for (CPoint<double> p : points) {
             double min_dist = double(INT_MAX);
@@ -387,7 +399,7 @@ bool Router::KMeans(){
         }
 
         /* Cost */
-        log() << "Last cost: " << pre_cost << " | " << "cost " << cost << '\n';
+        // log() << "Last cost: " << pre_cost << " | " << "cost " << cost << '\n';
         
         /* Update centroids */
         centroids.clear();
@@ -461,14 +473,13 @@ bool Router::KMeans(){
 
 bool Router::KMeansRefine(){
     if (!KMeansHardRefine()) KMeansSafeRefine();
-    
     return true;
 }
 
 // ---------------------------------------------------------------------
 
 bool Router::KMeansSafeRefine(){
-    log () << "Start Refined K-Means Clustering..." << std::endl;
+    log () << "Start Safe Refined K-Means Clustering..." << std::endl;
     /* Initialization */
     int N = npins;
     int K = ntaps;
@@ -498,7 +509,7 @@ bool Router::KMeansSafeRefine(){
     double cost = 0;
     double pre_cost = INT_MAX;
     for (int iter = 0; iter < 50; iter++) {
-        log() << "Iteration " << iter << std:: endl;
+        // log() << "Iteration " << iter << std:: endl;
         /* Assignment */
         for (CPoint<double> p : points) {
             double min_dist = double(INT_MAX);
@@ -514,7 +525,7 @@ bool Router::KMeansSafeRefine(){
         }
 
         /* Cost */
-        log() << "Last cost: " << pre_cost << " | " << "cost " << cost << '\n';
+        // log() << "Last cost: " << pre_cost << " | " << "cost " << cost << '\n';
         
         /* Update centroids */
         centroids.clear();
@@ -639,7 +650,10 @@ bool Router::KMeansSafeRefine(){
             }
         }
     }
-
+    /* Check Load */
+    for (auto pins : tap_id_pin) {
+        if (pins.size() > MaxLoad) return false;
+    }
     return true;
 } //END MODULE
 
@@ -676,7 +690,7 @@ bool Router::KMeansHardRefine(){
     double cost = 0;
     double pre_cost = INT_MAX;
     for (int iter = 0; iter < 50; iter++) {
-        log() << "Iteration " << iter << std:: endl;
+        // log() << "Iteration " << iter << std:: endl;
         /* Assignment */
         for (CPoint<double> p : points) {
             double min_dist = double(INT_MAX);
@@ -692,7 +706,7 @@ bool Router::KMeansHardRefine(){
         }
 
         /* Cost */
-        log() << "Last cost: " << pre_cost << " | " << "cost " << cost << '\n';
+        // log() << "Last cost: " << pre_cost << " | " << "cost " << cost << '\n';
         
         /* Update centroids */
         centroids.clear();
@@ -787,14 +801,14 @@ bool Router::KMeansHardRefine(){
     while(TotalOverflow!=0) {
         counter++;if(counter > MAXREFINE) {log() << "Error! Use safe version\n";return false;}
         for (int i = 0; i < K; i++) {
-            if (pinsClusterVector[i].size() > MaxLoad) {
+            if (loads[i] > MaxLoad) {
                 priority_queue<std::shared_ptr<Move_pair>, vector<std::shared_ptr<Move_pair>>, 
                                     decltype(swapComp)> swapQueue(swapComp);
                 /* for each pin */
                 for (int m = 0; m < pinsClusterVector[i].size(); m++) {
                     if (pinsClusterVector[i][m]._c != -1) {
                         for (int j = 0; j < K; j++) {
-                            if (j != i && pinsClusterVector[j].size() < MaxLoad) {
+                            if (j != i && loads[j] < MaxLoad) {
                                 for (auto pin : pinsClusterVector[j]) {
                                     if (pin._c != -1) {
                                         double dist_margin = pinsClusterVector[i][m] - pin;
@@ -834,7 +848,15 @@ bool Router::KMeansHardRefine(){
                     pinsClusterVector[i][pair->from]._c = -1;
                 }
             }
+            /* Update loads */
+            for (int i = 0; i < K; i++){
+                loads[i] = 0;
+                for (auto pin : pinsClusterVector[i]) {
+                    if (pin._c!=-1) loads[i]++;
+                }
+            }
         }
+        /* Update loads and overflow */
         TotalOverflow = 0;
         for (int i = 0; i < K; i++){
             loads[i] = 0;
@@ -856,6 +878,11 @@ bool Router::KMeansHardRefine(){
                 nets[i].pinPoints.emplace_back(database->pins[pin._c]->pos);
             }
         }
+    }
+
+    /* Check Load */
+    for (auto pins : tap_id_pin) {
+        if (pins.size() > MaxLoad) return false;
     }
 
     return true;

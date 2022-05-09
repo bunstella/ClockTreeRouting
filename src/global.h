@@ -30,18 +30,18 @@
 
 #include <thread>
 
-// // Boost libraries
-// #include <boost/program_options.hpp>
-// #include <boost/icl/split_interval_map.hpp>
-// #include <boost/geometry.hpp>
-// #include <boost/geometry/geometries/point.hpp>
-// #include <boost/geometry/geometries/box.hpp>
-// #include <boost/geometry/index/rtree.hpp>
-// #include <boost/foreach.hpp>
-// #include <boost/functional/hash.hpp>
+// Boost libraries
+#include <boost/program_options.hpp>
+#include <boost/icl/split_interval_map.hpp>
+#include <boost/geometry.hpp>
+#include <boost/geometry/geometries/point.hpp>
+#include <boost/geometry/geometries/box.hpp>
+#include <boost/geometry/index/rtree.hpp>
+#include <boost/foreach.hpp>
+#include <boost/functional/hash.hpp>
 
-// namespace bg = boost::geometry;
-// namespace bgi = boost::geometry::index;
+namespace bg = boost::geometry;
+namespace bgi = boost::geometry::index;
 
 // utils
 #include "utils/utils.h"
