@@ -26,9 +26,11 @@ cd ../bin
 
 # Configurations
 | Parameter               | Description                          |
------------------------------------------------------------------|
+--------------------------|--------------------------------------|
 | verify                  | Evaluate quality                     |
 | plot                    | Plot result                          |
+
+
 
 ## Verify
 ```
